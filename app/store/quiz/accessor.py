@@ -71,16 +71,14 @@ class QuizAccessor(BaseAccessor):
 
     async def get_question_by_title(self, title: str) -> Optional[Question]:
         async with self.app.database.session() as session:
-            q = select(QuestionModel).where(QuestionModel.title == title)
-            question = (await session.execute(q)).all()
-            if len(question) == 0:
+            q = select(QuestionModel).where(QuestionModel.title == title).options(
+                joinedload(QuestionModel.answers))
+            question = (await session.execute(q)).scalar()
+            if not question:
                 return None
-            question = question[0][0]
-            q = select(AnswerModel).where(AnswerModel.question_id == question.id)
-            anws = (await session.execute(q)).all()
         answer_res = []
-        for row in anws:
-            answer_res.append(Answer(title=row[0].title, is_correct=row[0].is_correct))
+        for row in question.answers:
+            answer_res.append(Answer(title=row.title, is_correct=row.is_correct))
         return Question(id=question.id, title=question.title, theme_id=question.theme_id, answers=answer_res)
 
     async def list_questions(self, theme_id: Optional[int] = None) -> list[Question]:
