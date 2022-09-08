@@ -1,8 +1,8 @@
-"""init
+"""WO themes, all answers are correct
 
-Revision ID: 6efc600d8a5b
+Revision ID: f4c13cfe2e9d
 Revises: 
-Create Date: 2022-09-07 11:57:30.981837
+Create Date: 2022-09-08 12:39:13.529138
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '6efc600d8a5b'
+revision = 'f4c13cfe2e9d'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -25,18 +25,9 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_admins_email'), 'admins', ['email'], unique=True)
-    op.create_table('themes',
-    sa.Column('id', sa.BigInteger(), autoincrement=True, nullable=False),
-    sa.Column('title', sa.VARCHAR(length=256), nullable=False),
-    sa.PrimaryKeyConstraint('id')
-    )
-    op.create_index(op.f('ix_themes_id'), 'themes', ['id'], unique=False)
-    op.create_index(op.f('ix_themes_title'), 'themes', ['title'], unique=True)
     op.create_table('questions',
     sa.Column('id', sa.BigInteger(), autoincrement=True, nullable=False),
     sa.Column('title', sa.VARCHAR(length=256), nullable=False),
-    sa.Column('theme_id', sa.BigInteger(), nullable=False),
-    sa.ForeignKeyConstraint(['theme_id'], ['themes.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_questions_id'), 'questions', ['id'], unique=False)
@@ -44,7 +35,6 @@ def upgrade() -> None:
     op.create_table('answers',
     sa.Column('id', sa.BigInteger(), autoincrement=True, nullable=False),
     sa.Column('title', sa.VARCHAR(length=256), nullable=False),
-    sa.Column('is_correct', sa.Boolean(), nullable=False),
     sa.Column('question_id', sa.BigInteger(), nullable=False),
     sa.ForeignKeyConstraint(['question_id'], ['questions.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
@@ -60,9 +50,6 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_questions_title'), table_name='questions')
     op.drop_index(op.f('ix_questions_id'), table_name='questions')
     op.drop_table('questions')
-    op.drop_index(op.f('ix_themes_title'), table_name='themes')
-    op.drop_index(op.f('ix_themes_id'), table_name='themes')
-    op.drop_table('themes')
     op.drop_index(op.f('ix_admins_email'), table_name='admins')
     op.drop_table('admins')
     # ### end Alembic commands ###
