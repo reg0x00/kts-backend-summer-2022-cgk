@@ -12,11 +12,13 @@ class Store:
         from app.store.admin.accessor import AdminAccessor
         from app.store.quiz.accessor import QuizAccessor
         from app.store.tg_api.accessor import TgApiAccessor
+        from app.store.bot.accessor import BotAccessor
 
         self.quizzes = QuizAccessor(app)
         self.admins = AdminAccessor(app)
         self.tg_api = TgApiAccessor(app)
         self.bots_manager = BotManager(app)
+        self.bot_sessions = BotAccessor(app)
 
 
 def setup_store(app: "Application"):
