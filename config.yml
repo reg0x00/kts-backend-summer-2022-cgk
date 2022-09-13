@@ -10,7 +10,7 @@ database:
   password: kts_pass
   database: kts
 bot:
-  token: group_token
-  group_id: 1
+  token: aa
+  discussion_timeout: 60
 
 

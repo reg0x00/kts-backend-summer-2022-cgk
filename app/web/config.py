@@ -19,7 +19,7 @@ class AdminConfig:
 @dataclass
 class BotConfig:
     token: str
-    group_id: int
+    discussion_timeout: int
 
 
 @dataclass
@@ -53,7 +53,7 @@ def setup_config(app: "Application", config_path: str):
         ),
         bot=BotConfig(
             token=raw_config["bot"]["token"],
-            group_id=raw_config["bot"]["group_id"],
+            discussion_timeout=raw_config["bot"]["discussion_timeout"]
         ),
         database=DatabaseConfig(**raw_config["database"]),
     )
