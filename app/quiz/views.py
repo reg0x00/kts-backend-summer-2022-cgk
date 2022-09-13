@@ -42,7 +42,7 @@ class QuestionListView(AuthRequiredMixin, View):
     @response_schema(ListQuestionSchema)
     async def get(self):
         raw_res = await self.store.quizzes.list_questions()
-        res = [QuestionSchema().dump(q) for q in raw_res]
+        res = QuestionSchema().dump(raw_res, many=True)
         return json_response(data={
             "questions": res
         })
