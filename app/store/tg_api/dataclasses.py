@@ -7,7 +7,8 @@ class UpdateMessage:
     from_id: int
     chat_id: int
     text: str
-    is_command: bool
+    is_command: bool = False
+    is_mention: bool = False
 
 
 @dataclass

@@ -1,3 +1,4 @@
+import logging
 import random
 import typing
 from typing import Optional
@@ -6,6 +7,7 @@ from aiohttp import TCPConnector
 from aiohttp.client import ClientSession
 
 from app.base.base_accessor import BaseAccessor
+from app.bot.models import UserChat
 from app.store.tg_api.dataclasses import Message, Update, UpdateMessage
 from app.store.tg_api.poller import Poller
 
@@ -87,11 +89,38 @@ class TgApiAccessor(BaseAccessor):
                                 from_id=msg["from"]["id"],
                                 chat_id=msg["chat"]["id"],
                                 text=msg["text"],
-                                is_command="entities" in msg and msg["entities"][0]["type"] == "bot_command"
+                                is_command="entities" in msg and any(
+                                    [m["type"] == "bot_command" for m in msg["entities"]]),
+                                is_mention="entities" in msg and any([m["type"] == "mention" for m in msg["entities"]]),
                             ),
                         )
                     )
             await self.app.store.bots_manager.handle_updates(updates)
+
+    async def get_admins(self, chat_id: int) -> list[UserChat]:
+        async with self.session.get(
+                self._build_query(
+                    host=API_PATH,
+                    method="getChatAdministrators",
+                    params={
+                        "chat_id": chat_id,
+                    },
+                    token=self.app.config.bot.token
+                )
+        ) as resp:
+            data = await resp.json()
+        if not data["ok"]:
+            logging.warning(data)
+            return []
+        user_list = []
+        for res in data["result"]:
+            if "user" in res:
+                user_list.append(UserChat(
+                    id=res["user"]["id"],
+                    chat_id=chat_id,
+                    uname=res["user"]["first_name"]
+                ))
+        return user_list
 
     async def send_message(self, message: Message) -> None:
         async with self.session.get(
