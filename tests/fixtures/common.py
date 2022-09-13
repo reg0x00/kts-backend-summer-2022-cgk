@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from aiohttp.test_utils import TestClient, loop_context
-from sqlalchemy import text
+from sqlalchemy import text, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.admin.models import Admin, AdminModel
@@ -66,7 +66,7 @@ async def clear_db(server):
         connection.close()
 
     except Exception as err:
-        logging.warning(err)
+        logging.error(err)
 
 
 @pytest.fixture
@@ -98,6 +98,9 @@ async def admin(cli, db_session, config: Config) -> Admin:
         password=sha256(config.admin.password.encode()).hexdigest(),
     )
     async with db_session.begin() as session:
-        session.add(new_admin)
+        q = select(AdminModel).where(AdminModel.email == new_admin.email)
+        res = (await session.execute(q)).scalars().first()
+        if not res:
+            session.add(new_admin)
 
     return Admin(id=new_admin.id, email=new_admin.email)

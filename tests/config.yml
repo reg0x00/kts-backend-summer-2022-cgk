@@ -6,6 +6,14 @@ admin:
 bot:
   token: group_token
   discussion_timeout: 60
+  api_path: https://api.telegram.org/bot
+  commands:
+    start: start
+    stop: stop
+    info: info
+    add_selection: add_me
+    assign: assign
+    answer: a
 database:
   host: 127.0.0.1
   port: 5432

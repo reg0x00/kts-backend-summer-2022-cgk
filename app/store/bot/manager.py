@@ -7,7 +7,7 @@ import asyncio
 from sqlalchemy.exc import IntegrityError
 
 from app.store.tg_api.dataclasses import Message, Update
-from app.bot.models import BotSession
+from app.bot.models_dc import BotSession
 
 if typing.TYPE_CHECKING:
     from app.web.app import Application
@@ -32,9 +32,9 @@ class BotManager:
             else:
                 send_id = update.object.chat_id
                 match update.object.text:
-                    case "/start":
+                    case self.app.config.bot.commands.start:
                         await self.create_session(chat_id=send_id, started_date=update.object.date)
-                    case "/assign":
+                    case self.app.config.bot.commands.assign:
                         if not update.object.is_mention:
                             await self.app.store.tg_api.send_message(
                                 Message(
@@ -53,9 +53,9 @@ class BotManager:
                             )
 
     async def create_session(self, chat_id: int, started_date: int):
-        admins = await self.app.store.tg_api.get_admins(chat_id=chat_id)
-        for a in admins:
-            await self.app.store.bot_sessions.add_user_chat(chat_id=chat_id, user_id=a.id, uname=a.uname)
+        # admins = await self.app.store.tg_api.get_admins(chat_id=chat_id)
+        # for a in admins:
+        #     await self.app.store.bot_sessions.create_user(User(uname=a.uname, chat_id=a.chat_id, id=a.id))
         try:
             bt_session = await self.app.store.bot_sessions.start_session(chat_id, started_date=started_date)
         except IntegrityError as e:
@@ -100,9 +100,6 @@ class BotManager:
         event = asyncio.Event()
         task = asyncio.create_task(self.session_runner(bot_session, event))
         self.sessions[bot_session.chat_id] = (task, event)
-
-    async def add_chat_user(self, chat_id: int, user_id: int):
-        await self.app.store.bot_sessions.add_user_chat(user_id=user_id, chat_id=chat_id)
 
     async def set_respondent(self, respondent: str, session_id: int):
         await self.app.store.bot_sessions.set_respondent(respondent=respondent, session_id=session_id)
