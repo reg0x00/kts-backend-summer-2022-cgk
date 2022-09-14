@@ -1,5 +1,4 @@
 import logging
-import random
 import typing
 from typing import Optional
 
@@ -7,23 +6,22 @@ from aiohttp import TCPConnector
 from aiohttp.client import ClientSession
 
 from app.base.base_accessor import BaseAccessor
-from app.bot.models import UserChat
+from app.bot.models_dc import User
 from app.store.tg_api.dataclasses import Message, Update, UpdateMessage
 from app.store.tg_api.poller import Poller
 
 if typing.TYPE_CHECKING:
     from app.web.app import Application
 
-API_PATH = "https://api.telegram.org/bot"
 
 
 class TgApiAccessor(BaseAccessor):
     def __init__(self, app: "Application", *args, **kwargs):
         super().__init__(app, *args, **kwargs)
-        self.session: Optional[ClientSession] = None
-        self.token: Optional[str] = None
-        self.poller: Optional[Poller] = None
-        self.offset: Optional[int] = None
+        self.session: ClientSession | None = None
+        self.token: str | None = None
+        self.poller: Poller | None = None
+        self.offset: int | None = None
 
     async def connect(self, app: "Application"):
         # return
@@ -51,7 +49,7 @@ class TgApiAccessor(BaseAccessor):
     async def _get_long_poll_service(self):
         async with self.session.get(
                 self._build_query(
-                    host=API_PATH,
+                    host=self.app.config.bot.api,
                     method="getUpdates",
                     params={},
                     token=self.app.config.bot.token
@@ -64,7 +62,7 @@ class TgApiAccessor(BaseAccessor):
     async def poll(self):
         async with self.session.get(
                 self._build_query(
-                    host=API_PATH,
+                    host=self.app.config.bot.api,
                     method="getUpdates",
                     params={
                         "offset": self.offset,
@@ -97,10 +95,10 @@ class TgApiAccessor(BaseAccessor):
                     )
             await self.app.store.bots_manager.handle_updates(updates)
 
-    async def get_admins(self, chat_id: int) -> list[UserChat]:
+    async def get_admins(self, chat_id: int) -> list[User]:
         async with self.session.get(
                 self._build_query(
-                    host=API_PATH,
+                    host=self.app.config.bot.api,
                     method="getChatAdministrators",
                     params={
                         "chat_id": chat_id,
@@ -115,7 +113,7 @@ class TgApiAccessor(BaseAccessor):
         user_list = []
         for res in data["result"]:
             if "user" in res:
-                user_list.append(UserChat(
+                user_list.append(User(
                     id=res["user"]["id"],
                     chat_id=chat_id,
                     uname=res["user"]["first_name"]
@@ -125,7 +123,7 @@ class TgApiAccessor(BaseAccessor):
     async def send_message(self, message: Message) -> None:
         async with self.session.get(
                 self._build_query(
-                    host=API_PATH,
+                    host=self.app.config.bot.api,
                     method="sendMessage",
                     params={
                         "chat_id": message.user_id,

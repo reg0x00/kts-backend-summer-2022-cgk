@@ -4,8 +4,9 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
-from app.bot.models import User, SessionModel, SessionCurrentQuestionModel, TgUsersModel, TgChatUsersModel, UserChat, \
-    BotSession, AnswerResponseStageModel
+from app.bot.models import SessionModel, SessionCurrentQuestionModel, TgUsersModel, \
+    AnswerResponseStageModel
+from app.bot.models_dc import User, BotSession
 from app.quiz.models import Question
 from tests.utils import check_empty_table_exists
 from app.store import Store
@@ -19,19 +20,14 @@ class TestBotStore:
         await check_empty_table_exists(cli, "response_stage")
         await check_empty_table_exists(cli, "last_session")
         await check_empty_table_exists(cli, "tg_users")
-        await check_empty_table_exists(cli, "tg_chat_users")
 
-    async def test_random_user_select(self, cli, session_1: BotSession, user_chat_1: UserChat, user_chat_2: UserChat,
-                                      user_chat_3: UserChat,
+    async def test_random_user_select(self, cli, session_1: BotSession, user_chat_1: User, user_chat_2: User,
+                                      user_chat_3: User,
                                       store: Store):
         unique = set()
         for _ in range(10):
             unique.add((await store.bot_sessions.get_random_user(chat_id=session_1.chat_id)).id)
         assert len(unique) > 1
-
-    async def test_random_user_select_get_uname(self, cli, store: Store, session_1: BotSession, user_chat_1: UserChat):
-        user = await store.bot_sessions.get_random_user(chat_id=user_chat_1.chat_id)
-        assert user == User(uname=user_chat_1.uname, id=user_chat_1.id)
 
     async def test_random_user_select_empty(self, cli, store: Store):
         with pytest.raises(FileNotFoundError) as exc_info:
@@ -47,55 +43,47 @@ class TestBotStore:
 
     async def test_start_session(self, cli, question_1: Question, question_2: Question, question_3: Question,
                                  session_1: BotSession,
-                                 user_chat_1: UserChat,
+                                 user_chat_1: User,
                                  store: Store):
         chat_id = session_1.chat_id
         start = int(time.time())
         res1 = await store.bot_sessions.start_session(chat_id=chat_id, started_date=start)
+        res2 = await store.bot_sessions.start_session(chat_id=chat_id, started_date=start)
         res = await store.bot_sessions.get_running_session(chat_id=chat_id)
-        assert res == res1
+        assert res == res1 == res2
 
-    async def test_add_user(self, cli, store: Store):
-        user_id = 432
-        user = await store.bot_sessions.create_user(user_id)
+    async def test_add_user(self, cli, store: Store, session_1: BotSession):
+        user_orig = User(id=123, chat_id=[session_1.chat_id], uname="asd")
+        await store.bot_sessions.create_user(user_orig)
         async with cli.app.database.session() as session:
-            q = select(TgUsersModel).where(TgUsersModel.id == user_id)
+            q = select(TgUsersModel).where(TgUsersModel.id == user_orig.id).options(joinedload(TgUsersModel.chat))
             user_db = (await (session.execute(q))).scalars().first()
-        assert user_db.id == user.id
+            res_db = User(chat_id=[i.chat_id for i in user_db.chat], uname=user_db.uname, id=user_db.id)
+        assert res_db == user_orig
 
-    async def test_add_user_uname(self, cli, store: Store):
-        user_id = 432
-        uname = "User"
-        user = await store.bot_sessions.create_user(user_id, uname=uname)
+    async def test_add_user_multiple_chats(self, cli, store: Store, session_1: BotSession, session_2: BotSession):
+        user_orig = User(id=123, chat_id=[session_1.chat_id, session_2.chat_id], uname="asd")
+        await store.bot_sessions.create_user(user_orig)
         async with cli.app.database.session() as session:
-            q = select(TgUsersModel).where(TgUsersModel.id == user_id)
+            q = select(TgUsersModel).where(TgUsersModel.id == user_orig.id).options(joinedload(TgUsersModel.chat))
             user_db = (await (session.execute(q))).scalars().first()
-        assert user_db.id == user.id
-
-    async def test_add_user_group(self, cli, store: Store):
-        chat_id = 100
-        user_id = 200
-        await store.bot_sessions.create_session(chat_id)
-        await store.bot_sessions.create_user(user_id)
-        user_chat = await store.bot_sessions.add_user_chat(user_id, chat_id)
-        async with cli.app.database.session() as session:
-            q = select(TgChatUsersModel).where(TgChatUsersModel.id == user_id)
-            chat_user_db = (await (session.execute(q))).scalars().first()
-        user_chat_db = UserChat(id=chat_user_db.id, chat_id=chat_user_db.chat_id)
-        assert user_chat_db == user_chat
+            res_db = User(chat_id=[i.chat_id for i in user_db.chat], uname=user_db.uname, id=user_db.id)
+        assert res_db == user_orig
 
     async def test_alter_respondent(self, cli, question_1: Question, question_2: Question, question_3: Question,
                                     session_1: BotSession,
-                                    user_chat_1: UserChat,
-                                    user_chat_2: UserChat,
+                                    user_chat_1: User,
+                                    user_chat_2: User,
                                     store: Store):
         chat_id = session_1.chat_id
-        await store.bot_sessions.set_respondent(respondent=user_chat_1.id, session_id=chat_id)
+        res1 = await store.bot_sessions.set_respondent(respondent=user_chat_1.id, session_id=chat_id)
+        assert res1 == user_chat_1
         async with cli.app.database.session() as session:
             async with session.begin():
                 q = select(AnswerResponseStageModel).where(AnswerResponseStageModel.session_id == session_1.chat_id)
                 assert user_chat_1.id == (await (session.execute(q))).scalars().first().respondent
-        await store.bot_sessions.set_respondent(respondent=user_chat_2.id, session_id=chat_id)
+        res2 = await store.bot_sessions.set_respondent(respondent=user_chat_2.id, session_id=chat_id)
+        assert res2 == user_chat_2
         async with cli.app.database.session() as session:
             async with session.begin():
                 q = select(AnswerResponseStageModel).where(AnswerResponseStageModel.session_id == session_1.chat_id)

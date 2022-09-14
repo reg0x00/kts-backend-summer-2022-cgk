@@ -1,6 +1,7 @@
 import pytest
 
-from app.bot.models import User, TgUsersModel, TgChatUsersModel, UserChat, SessionModel, BotSession
+from app.bot.models import TgUsersModel, SessionModel, TgUserChatModel
+from app.bot.models_dc import User, BotSession
 from app.quiz.models import (
     Answer,
     AnswerModel,
@@ -114,56 +115,64 @@ async def session_1(db_session) -> BotSession:
 
 
 @pytest.fixture
-async def user_chat_1(db_session) -> UserChat:
+async def session_2(db_session) -> BotSession:
     async with db_session.begin() as session:
-        user = TgUsersModel(
-            id=100,
-            uname="asd"
-        )
-        user_chat = TgChatUsersModel(
-            tg_user=user,
-            chat_id=120
+        user_chat = SessionModel(
+            chat_id=130
         )
         session.add(user_chat)
 
-    return UserChat(
-        id=user_chat.id,
-        chat_id=user_chat.chat_id,
+    return BotSession(
+        chat_id=user_chat.chat_id
+    )
+
+
+@pytest.fixture
+async def user_chat_1(db_session) -> User:
+    async with db_session.begin() as session:
+        user = TgUsersModel(
+            id=100,
+            uname="asd",
+            chat=[TgUserChatModel(chat_id=120)]
+        )
+        session.add(user)
+
+    return User(
+        id=user.id,
+        chat_id=[120],
         uname="asd"
     )
 
 
 @pytest.fixture
-async def user_chat_2(db_session) -> UserChat:
+async def user_chat_2(db_session) -> User:
     async with db_session.begin() as session:
         user = TgUsersModel(
-            id=200
+            id=200,
+            uname="asd",
+            chat=[TgUserChatModel(chat_id=120)]
         )
-        user_chat = TgChatUsersModel(
-            tg_user=user,
-            chat_id=120
-        )
-        session.add(user_chat)
+        session.add(user)
 
-    return UserChat(
-        id=user_chat.id,
-        chat_id=user_chat.chat_id
+    return User(
+        id=user.id,
+        chat_id=[120],
+        uname="asd"
     )
 
 
 @pytest.fixture
-async def user_chat_3(db_session) -> UserChat:
+async def user_chat_3(db_session) -> User:
     async with db_session.begin() as session:
         user = TgUsersModel(
-            id=300
+            id=300,
+            uname="asd",
+            chat=[TgUserChatModel(chat_id=120)]
         )
-        user_chat = TgChatUsersModel(
-            tg_user=user,
-            chat_id=120
-        )
-        session.add(user_chat)
+        session.add(user)
 
-    return UserChat(
-        id=user_chat.id,
-        chat_id=user_chat.chat_id
+    return User(
+        id=user.id,
+        chat_id=[120],
+        uname="asd"
     )
