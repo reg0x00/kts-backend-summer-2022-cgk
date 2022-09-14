@@ -3,7 +3,7 @@ import typing
 
 from sqlalchemy import select, delete, update, func, and_
 from sqlalchemy.orm import joinedload, aliased
-
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.base.base_accessor import BaseAccessor
 from app.bot.models import SessionModel, SessionCurrentQuestionModel, TgUsersModel, LastSessionModel, \
     AnswerResponseStageModel, TgUserChatModel
@@ -16,8 +16,12 @@ if typing.TYPE_CHECKING:
 
 class BotAccessor(BaseAccessor):
     async def connect(self, app: "Application"):
-        # TODO Restore sessions
-        pass
+        async with self.app.database.session() as session:
+            q = select(SessionModel)
+            sessions = (await session.execute(q)).scalars().all()
+            for s in sessions:
+                running_session = await self.get_running_session(s.chat_id)
+                await self.app.store.bots_manager.start_session_runner(running_session)
 
     async def disconnect(self, app: "Application"):
         pass
@@ -45,43 +49,46 @@ class BotAccessor(BaseAccessor):
                 q = select(TgUsersModel).where(TgUsersModel.id == user.id).options(joinedload(TgUsersModel.chat))
                 q_res = (await (session.execute(q))).scalars().first()
                 if not q_res:
-                    q_res = TgUsersModel(id=user.id, uname=user.uname)
+                    q_res = TgUsersModel(id=user.id, uname=user.uname,
+                                         chat=[TgUserChatModel(chat_id=c) for c in user.chat_id])
                     session.add(q_res)
-                q_res.chat.extend([TgUserChatModel(chat_id=chat) for chat in user.chat_id if chat not in q_res.chat])
+                else:
+                    for chat in user.chat_id:
+                        if q_res.chat and chat not in [qc.chat_id for qc in q_res.chat]:
+                            q_res.chat.append(TgUserChatModel(chat_id=chat))
         return User(id=q_res.id, uname=q_res.uname, chat_id=[i.chat_id for i in q_res.chat])
 
-    async def create_session(self, chat_id: int) -> BotSession:
-        async with self.app.database.session() as session:
-            async with session.begin():
-                q = select(SessionModel).where(SessionModel.chat_id == chat_id)
-                res = (await (session.execute(q))).scalars().first()
-                if not res:
-                    res = SessionModel(chat_id=chat_id)
-                    session.add(res)
+    async def _create_session(self, chat_id: int, session: AsyncSession) -> BotSession:
+        q = select(SessionModel).where(SessionModel.chat_id == chat_id)
+        res = (await (session.execute(q))).scalars().first()
+        if not res:
+            res = SessionModel(chat_id=chat_id)
+            session.add(res)
 
         return BotSession(chat_id=res.chat_id)
 
+    async def create_session(self, chat_id: int, session: AsyncSession | None = None) -> BotSession:
+        if not session:
+            async with self.app.database.session() as session:
+                async with session.begin():
+                    return await self._create_session(chat_id, session)
+        else:
+            return await self._create_session(chat_id, session)
+
     async def start_session(self, chat_id: int, started_date: int) -> BotSession:
-        session_table = await self.create_session(chat_id)
         async with self.app.database.session() as session:
             async with session.begin():
-                q = select(SessionCurrentQuestionModel).where(
-                    SessionCurrentQuestionModel.session_id == chat_id).options(joinedload('*'))
-                res = (await (session.execute(q))).scalars().first()
-                if not res:
-                    question, lead = await asyncio.gather(self.get_random_question(),
-                                                          self.get_random_user(chat_id=chat_id))
-                    res = SessionCurrentQuestionModel(
-                        question_id=question.id,
-                        started_date=started_date,
-                        lead=lead.id,
-                        session_id=session_table.chat_id
-                    )
-                    session.add(res)
-                else:
-                    question = Question(id=res.question.id, title=res.question.title,
-                                        answers=[a.title for a in res.question.answers])
-                    lead = res.tg_users
+                session_table = await self.create_session(chat_id, session)
+                question, lead = await asyncio.gather(self.get_random_question(),
+                                                      self.get_random_user(chat_id=chat_id))
+                res = SessionCurrentQuestionModel(
+                    question_id=question.id,
+                    started_date=started_date,
+                    lead=lead.id,
+                    session_id=session_table.chat_id
+                )
+                session.add(res)
+
         return BotSession(
             chat_id=chat_id,
             session_question=
@@ -111,20 +118,21 @@ class BotAccessor(BaseAccessor):
                 completed_questions=res.session_question.completed_questions,
                 correct_questions=res.session_question.correct_questions,
                 lead=User(id=res.session_question.tg_users.id, uname=res.session_question.tg_users.uname,
-                          chat_id=[c.chat_id for c in res.session_question.tg_users.chat])
+                          chat_id=[c.chat_id for c in res.session_question.tg_users.chat]),
+                respondent=res.response.tg_user.uname if res.response else None
             ) if res.session_question else None
         )
 
     async def set_respondent(self, respondent: int, session_id: int) -> User:
         async with self.app.database.session() as session:
             async with session.begin():
+                q = select(TgUsersModel).where(TgUsersModel.id == respondent).options(
+                    joinedload(TgUsersModel.chat))
+                user = (await (session.execute(q))).scalars().first()
                 q = select(AnswerResponseStageModel).where(
                     AnswerResponseStageModel.session_id == session_id).options(
-                    joinedload('*'))
+                    joinedload(AnswerResponseStageModel.tg_user))
                 q_res = (await (session.execute(q))).scalars().first()
-                q = select(TgUsersModel).where(TgUsersModel.id == respondent).options(
-                    joinedload('*'))
-                resp = (await (session.execute(q))).scalars().first()
                 if not q_res:
                     q_res = AnswerResponseStageModel(
                         session_id=session_id,
@@ -133,7 +141,7 @@ class BotAccessor(BaseAccessor):
                     session.add(q_res)
                 else:
                     q_res.respondent = respondent
-        return User(id=respondent, uname=resp.uname, chat_id=[c.chat_id for c in resp.chat])
+        return User(id=respondent, uname=user.uname, chat_id=[c.chat_id for c in user.chat])
 
     # async def get_last_session(self, chat_id: int) -> LastSession:
 
@@ -156,3 +164,12 @@ class BotAccessor(BaseAccessor):
             correct_questions=to_last_session.correct_questions,
             completed_questions=to_last_session.completed_questions
         )
+
+    async def get_user_by_uname(self, uname: str) -> User | None:
+        async with self.app.database.session() as session:
+            q = select(TgUsersModel).where(TgUsersModel.uname == uname).options(
+                joinedload(TgUsersModel.chat))
+            user = (await (session.execute(q))).scalars().first()
+            if not user:
+                return None
+        return User(id=user.id, uname=uname, chat_id=[c.chat_id for c in user.chat])

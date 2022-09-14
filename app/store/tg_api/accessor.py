@@ -73,6 +73,8 @@ class TgApiAccessor(BaseAccessor):
         ) as resp:
             data = await resp.json()
             self.logger.info(data)
+            if not data["result"]:
+                return
             self.offset = max(m["update_id"] for m in data["result"]) + 1
             raw_updates = data.get("result", [])
             updates = []
@@ -85,6 +87,7 @@ class TgApiAccessor(BaseAccessor):
                             object=UpdateMessage(
                                 date=msg["date"],
                                 from_id=msg["from"]["id"],
+                                from_username=msg["from"]["username"],
                                 chat_id=msg["chat"]["id"],
                                 text=msg["text"],
                                 is_command="entities" in msg and any(

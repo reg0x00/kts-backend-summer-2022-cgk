@@ -2,6 +2,7 @@ import logging
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 
 from app.bot.models import SessionModel, SessionCurrentQuestionModel, TgUsersModel, \
@@ -48,9 +49,12 @@ class TestBotStore:
         chat_id = session_1.chat_id
         start = int(time.time())
         res1 = await store.bot_sessions.start_session(chat_id=chat_id, started_date=start)
-        res2 = await store.bot_sessions.start_session(chat_id=chat_id, started_date=start)
+        with pytest.raises(IntegrityError) as exc_info:
+            await store.bot_sessions.start_session(chat_id=chat_id, started_date=start)
+        assert exc_info.value.orig.pgcode == "23505"
         res = await store.bot_sessions.get_running_session(chat_id=chat_id)
-        assert res == res1 == res2
+        assert res == res1
+
 
     async def test_add_user(self, cli, store: Store, session_1: BotSession):
         user_orig = User(id=123, chat_id=[session_1.chat_id], uname="asd")
@@ -62,7 +66,14 @@ class TestBotStore:
         assert res_db == user_orig
 
     async def test_add_user_multiple_chats(self, cli, store: Store, session_1: BotSession, session_2: BotSession):
-        user_orig = User(id=123, chat_id=[session_1.chat_id, session_2.chat_id], uname="asd")
+        user_orig = User(id=123, chat_id=[session_1.chat_id], uname="asd")
+        await store.bot_sessions.create_user(user_orig)
+        async with cli.app.database.session() as session:
+            q = select(TgUsersModel).where(TgUsersModel.id == user_orig.id).options(joinedload(TgUsersModel.chat))
+            user_db = (await (session.execute(q))).scalars().first()
+            res_db = User(chat_id=[i.chat_id for i in user_db.chat], uname=user_db.uname, id=user_db.id)
+        assert res_db == user_orig
+        user_orig.chat_id.append(session_2.chat_id)
         await store.bot_sessions.create_user(user_orig)
         async with cli.app.database.session() as session:
             q = select(TgUsersModel).where(TgUsersModel.id == user_orig.id).options(joinedload(TgUsersModel.chat))
