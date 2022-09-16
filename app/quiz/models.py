@@ -13,8 +13,6 @@ from sqlalchemy import (
 )
 
 
-
-
 @dataclass
 class Question:
     id: Optional[int]
@@ -32,7 +30,7 @@ class QuestionModel(db):
     id = Column(BigInteger, primary_key=True, autoincrement=True, index=True)
     title = Column(VARCHAR(256), nullable=False, unique=True, index=True)
     answers = relationship("AnswerModel", back_populates="question")
-    active_session = relationship("SessionCurrentQuestionModel")
+    active_session = relationship("SessionCurrentQuestionModel", viewonly=True)
 
 
 class AnswerModel(db):

@@ -79,7 +79,7 @@ class TgApiAccessor(BaseAccessor):
             raw_updates = data.get("result", [])
             updates = []
             for update in raw_updates:
-                if "message" in update and "entities":
+                if "message" in update and "text" in update["message"]:
                     msg = update["message"]
                     updates.append(
                         Update(
