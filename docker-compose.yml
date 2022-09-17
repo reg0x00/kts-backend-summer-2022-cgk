@@ -55,7 +55,6 @@ services:
     links:
       - "postgres"
   app_db:
-    restart: unless-stopped
     image: app_bot_2k2209:0.0.1
     environment:
       - APP_PG_URL=postgresql+asyncpg://kts_user:kts_pass@db/kts

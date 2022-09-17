@@ -13,5 +13,3 @@ RUN ln -snf /usr/share/python3/app/bin/app-bot /usr/local/bin/
 RUN ln -snf /usr/share/python3/app/bin/app-db /usr/local/bin/
 COPY alembic.ini/ /usr/share/python3/app/lib/python3.10/site-packages/
 COPY alembic/ /usr/share/python3/app/lib/python3.10/site-packages/alembic
-COPY app/db/ /usr/share/python3/app/lib/python3.10/site-packages/app/db
-CMD ["app-bot"]
