@@ -10,8 +10,8 @@ database:
   password: kts_pass
   database: kts
 bot:
-  token: aa
-  discussion_timeout: 60
+  tg_token: aa
+  discussion_timeout: 10
   api_path: https://api.telegram.org/bot
   commands:
     start: start

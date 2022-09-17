@@ -1,0 +1,67 @@
+version: "0.1"
+services:
+  postgres:
+    restart: unless-stopped
+    container_name: db
+    image: postgres:latest
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=50"
+      - "-c"
+      - "shared_buffers=1GB"
+      - "-c"
+      - "effective_cache_size=4GB"
+      - "-c"
+      - "work_mem=16MB"
+      - "-c"
+      - "maintenance_work_mem=512MB"
+      - "-c"
+      - "random_page_cost=1.1"
+      - "-c"
+      - "temp_file_limit=10GB"
+      - "-c"
+      - "log_min_duration_statement=200ms"
+      - "-c"
+      - "idle_in_transaction_session_timeout=10s"
+      - "-c"
+      - "lock_timeout=1s"
+      - "-c"
+      - "statement_timeout=60s"
+    #      - "-i"
+    environment:
+      POSTGRES_DB: "kts"
+      POSTGRES_USER: "kts_user"
+      POSTGRES_PASSWORD: "kts_pass"
+    ports:
+      - "5432:5432"
+    volumes:
+      - ~/pg_vol:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U kts_user -d kts" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+  bot:
+    restart: unless-stopped
+    image: app_bot_2k2209:0.0.1
+    command:
+      - "app-bot"
+    environment:
+      - PG_HOST=db
+    ports:
+      - "80:80"
+    links:
+      - "postgres"
+  app_db:
+    restart: unless-stopped
+    image: app_bot_2k2209:0.0.1
+    environment:
+      - APP_PG_URL=postgresql+asyncpg://kts_user:kts_pass@db/kts
+    command: bash -c "app-db upgrade head"
+    links:
+      - "postgres"
+    depends_on:
+      postgres:
+        condition: service_healthy
