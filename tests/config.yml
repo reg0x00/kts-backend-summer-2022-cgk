@@ -20,3 +20,5 @@ database:
   user: kts_user
   password: kts_pass
   database: kts
+mq:
+  host: 127.0.0.1

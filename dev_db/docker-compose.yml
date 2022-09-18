@@ -27,7 +27,6 @@ services:
       - "lock_timeout=1s"
       - "-c"
       - "statement_timeout=60s"
-    #      - "-i"
     environment:
       POSTGRES_DB: "kts"
       POSTGRES_USER: "kts_user"
@@ -51,27 +50,13 @@ services:
       PGADMIN_DEFAULT_EMAIL: "admin@admin.com"
       PGADMIN_DEFAULT_PASSWORD: "secret"
       PGADMIN_LISTEN_PORT: 80
-    #      POSTGRES_HOST_AUTH_METHOD: trust
     ports:
       - "8880:80"
     volumes:
       - /home/user/pga:/var/lib/pgadmin
-#sudo chown -R 5050:5050
-#  app:
-#    image: app
-#    environment:
-#      - APP_PG_URL=postgresql+asyncpg://user:usrpass@db/app
-#    ports:
-#      - "80:8000"
-#    links:
-#      - "postgres"
-#  app_db:
-#    image: app
-#    environment:
-#      - APP_PG_URL=postgresql://user:usrpass@db/app
-#    command: bash -c "app-db upgrade head"
-#    links:
-#      - "postgres"
-#    depends_on:
-#      postgres:
-#        condition: service_healthy
+  rabbitmq:
+    container_name: mq
+    image: rabbitmq:3.10-management
+    ports:
+      - "15672:15672"
+      - "5672:5672"

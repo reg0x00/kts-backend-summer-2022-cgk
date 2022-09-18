@@ -24,6 +24,7 @@ setup(
     entry_points={
         "console_scripts": [
             "app-bot = app.bot_ep:main",
+            "app-tg = app.tg_api_ep:main",
             "app-db = app.db_ep:main",
         ]
     },

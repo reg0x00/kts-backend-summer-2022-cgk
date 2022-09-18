@@ -28,7 +28,6 @@ services:
       - "lock_timeout=1s"
       - "-c"
       - "statement_timeout=60s"
-    #      - "-i"
     environment:
       POSTGRES_DB: "kts"
       POSTGRES_USER: "kts_user"
@@ -43,6 +42,12 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+  rabbitmq:
+    container_name: mq
+    image: rabbitmq:3.10-management
+    ports:
+      - "15672:15672"
+      - "5672:5672"
   bot:
     restart: unless-stopped
     image: app_bot_2k2209:0.0.1
@@ -50,12 +55,25 @@ services:
       - "app-bot"
     environment:
       - PG_HOST=db
+      - MQ_HOST=mq
     ports:
       - "80:80"
     links:
       - "postgres"
     depends_on:
       - "app_db"
+      - rabbitmq
+  tg_api:
+    restart: unless-stopped
+    image: app_bot_2k2209:0.0.1
+    command:
+      - "app-tg"
+    environment:
+      - MQ_HOST=mq
+    links:
+      - "rabbitmq"
+    depends_on:
+      - bot
   app_db:
     image: app_bot_2k2209:0.0.1
     environment:

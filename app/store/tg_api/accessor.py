@@ -4,6 +4,7 @@ import asyncio
 
 from aiohttp import TCPConnector
 from aiohttp.client import ClientSession
+from aio_pika.patterns import Master
 
 from app.base.base_accessor import BaseAccessor
 from app.bot.models_dc import User
@@ -15,16 +16,18 @@ if typing.TYPE_CHECKING:
 
 
 class TgApiAccessor(BaseAccessor):
-    def __init__(self, app: "Application", *args, **kwargs):
+    def __init__(self, app: "Application", listen: bool = False, *args, **kwargs):
         super().__init__(app, *args, **kwargs)
+        self.listen = listen
         self.session: ClientSession | None = None
         self.token: str | None = None
         self.poller: Poller | None = None
         self.offset: int | None = None
 
     async def connect(self, app: "Application"):
-        # return
         self.session = ClientSession(connector=TCPConnector(verify_ssl=False))
+        if not self.listen:
+            return
         try:
             await self._get_long_poll_service()
         except Exception as e:
@@ -104,32 +107,11 @@ class TgApiAccessor(BaseAccessor):
                             ),
                         )
                     )
-            await self.app.store.bots_manager.handle_updates(updates)
-
-    async def get_admins(self, chat_id: int) -> list[User]:
-        async with self.session.get(
-                self._build_query(
-                    host=self.app.config.bot.api,
-                    method="getChatAdministrators",
-                    params={
-                        "chat_id": chat_id,
-                    },
-                    token=self.app.config.bot.token
-                )
-        ) as resp:
-            data = await resp.json()
-        if not data["ok"]:
-            logging.warning(data)
-            return []
-        user_list = []
-        for res in data["result"]:
-            if "user" in res:
-                user_list.append(User(
-                    id=res["user"]["id"],
-                    chat_id=chat_id,
-                    uname=res["user"]["first_name"]
-                ))
-        return user_list
+            channel = await self.app.mq.mq_connection.channel()
+            master = Master(channel)
+            for task_id in range(len(updates)):
+                await master.proxy.my_task_name(update=updates[task_id])
+            # await self.app.store.bots_manager.handle_updates(updates)
 
     async def send_message(self, message: Message) -> None:
         async with self.session.get(
