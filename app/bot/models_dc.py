@@ -12,6 +12,7 @@ class User:
 
 @dataclass
 class LastSession:
+    chat_id: int
     lead: User
     completed_questions: int
     correct_questions: int
@@ -34,4 +35,4 @@ class BotSession:
     last_session: LastSession | None = None
 
     def check_answer(self, ans: str):
-        return self.session_question and any(*self.session_question.question.answers)
+        return self.session_question and any([ans in a.title for a in self.session_question.question.answers])

@@ -1,6 +1,6 @@
 import logging
 import typing
-from typing import Optional
+import asyncio
 
 from aiohttp import TCPConnector
 from aiohttp.client import ClientSession
@@ -12,7 +12,6 @@ from app.store.tg_api.poller import Poller
 
 if typing.TYPE_CHECKING:
     from app.web.app import Application
-
 
 
 class TgApiAccessor(BaseAccessor):
@@ -46,6 +45,10 @@ class TgApiAccessor(BaseAccessor):
         url += "&".join([f"{k}={v}" for k, v in params.items()])
         return url
 
+    async def response_error(self, data):
+        logging.error(data)
+        await asyncio.sleep(1)
+
     async def _get_long_poll_service(self):
         async with self.session.get(
                 self._build_query(
@@ -56,6 +59,8 @@ class TgApiAccessor(BaseAccessor):
                 )
         ) as resp:
             data = (await resp.json())
+            if not data["ok"]:
+                await self.response_error(data)
             self.logger.info(data)
             self.offset = (max([m["update_id"] for m in data["result"]]) + 1) if data["result"] else 0
 
@@ -66,18 +71,23 @@ class TgApiAccessor(BaseAccessor):
                     method="getUpdates",
                     params={
                         "offset": self.offset,
-                        "timeout": 25,
+                        "timeout": 5,
                     },
                     token=self.app.config.bot.token
                 )
         ) as resp:
             data = await resp.json()
+            if not data["ok"]:
+                await self.response_error(data)
+                return
             self.logger.info(data)
+            if not data["result"]:
+                return
             self.offset = max(m["update_id"] for m in data["result"]) + 1
             raw_updates = data.get("result", [])
             updates = []
             for update in raw_updates:
-                if "message" in update and "entities":
+                if "message" in update and "text" in update["message"]:
                     msg = update["message"]
                     updates.append(
                         Update(
@@ -85,6 +95,7 @@ class TgApiAccessor(BaseAccessor):
                             object=UpdateMessage(
                                 date=msg["date"],
                                 from_id=msg["from"]["id"],
+                                from_username=msg["from"]["username"],
                                 chat_id=msg["chat"]["id"],
                                 text=msg["text"],
                                 is_command="entities" in msg and any(
