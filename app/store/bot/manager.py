@@ -3,10 +3,11 @@ import typing
 from logging import getLogger
 import time
 import asyncio
+from aio_pika.patterns import Master
 
 from sqlalchemy.exc import IntegrityError
 
-from app.store.tg_api.dataclasses import Message, Update
+from app.store.tg_api.dataclasses import Message, Update, UpdateMessage
 from app.bot.models_dc import BotSession, User, LastSession
 
 if typing.TYPE_CHECKING:
@@ -152,32 +153,31 @@ class BotManager:
             await self.start_session_runner(
                 await (self.app.store.bot_sessions.get_running_session(update.object.chat_id)))
 
-    async def handle_updates(self, updates: list[Update]):
-        for update in updates:
-            if not update.object.is_command:  # if message is not command, then reply
-                await self.app.store.tg_api.send_message(
-                    Message(
-                        user_id=update.object.from_id,
-                        text="Привет!",
-                    )
+    async def handle_updates(self, update: Update):
+        if not update.object.is_command:  # if message is not command, then reply
+            await self.app.store.tg_api.send_message(
+                Message(
+                    user_id=update.object.from_id,
+                    text="Привет!",
                 )
-            else:
-                if update.object.chat_id not in self.sessions:
-                    await self.app.store.bot_sessions.create_session(update.object.chat_id)
-                    self.sessions[update.object.chat_id] = BotSession(chat_id=update.object.chat_id)
-                match update.object.text.split()[0]:
-                    case self.app.config.bot.commands.start:
-                        await self.start_command(update)
-                    case self.app.config.bot.commands.stop:
-                        await self.stop_command(update)
-                    case self.app.config.bot.commands.assign:
-                        await self.assign_command(update)
-                    case self.app.config.bot.commands.add_selection:
-                        await self.add_selection_command(update)
-                    case self.app.config.bot.commands.answer:
-                        await self.answer_command(update)
-                    case self.app.config.bot.commands.info:
-                        await self.info_command(update)
+            )
+        else:
+            if update.object.chat_id not in self.sessions:
+                await self.app.store.bot_sessions.create_session(update.object.chat_id)
+                self.sessions[update.object.chat_id] = BotSession(chat_id=update.object.chat_id)
+            match update.object.text.split()[0]:
+                case self.app.config.bot.commands.start:
+                    await self.start_command(update)
+                case self.app.config.bot.commands.stop:
+                    await self.stop_command(update)
+                case self.app.config.bot.commands.assign:
+                    await self.assign_command(update)
+                case self.app.config.bot.commands.add_selection:
+                    await self.add_selection_command(update)
+                case self.app.config.bot.commands.answer:
+                    await self.answer_command(update)
+                case self.app.config.bot.commands.info:
+                    await self.info_command(update)
 
     async def create_session(self, chat_id: int, started_date: int):
         try:
@@ -251,3 +251,8 @@ class BotManager:
                 text="Выберите отвечающего",
             )
         )
+
+    async def update_worker(self):
+        channel = await self.app.mq.mq_connection.channel()
+        master = Master(channel)
+        await master.create_worker("my_task_name", self.handle_updates, auto_delete=True)
