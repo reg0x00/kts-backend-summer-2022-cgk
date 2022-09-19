@@ -8,7 +8,7 @@ from sqlalchemy.orm import joinedload
 
 from app.bot.models import SessionModel, SessionCurrentQuestionModel, TgUsersModel, \
     AnswerResponseStageModel
-from app.bot.models_dc import User, BotSession
+from app.bot.models_dc import User, BotSession, LastSession
 from app.quiz.models import Question
 from tests.utils import check_empty_table_exists
 from app.store import Store
@@ -106,56 +106,52 @@ class TestBotStore:
 
     async def test_change_score(self, question_1: Question, question_2: Question,
                                 question_3: Question,
-                                session_1: BotSession,
+                                active_session_1: BotSession,
                                 user_chat_1: User,
                                 user_chat_2: User,
                                 store: Store):
         chat_id = user_chat_1.chat_id[0]
-        session_start = await store.bot_sessions.start_session(chat_id,
-                                                               datetime.datetime.now().timestamp())
-        await store.bot_sessions.change_score(change=0, chat_id=session_start.chat_id)
+        await store.bot_sessions.change_score(change=0, chat_id=active_session_1.chat_id)
         sess_0 = await store.bot_sessions.get_running_session(chat_id=chat_id)
-        assert sess_0.session_question.correct_questions == 0
-        assert sess_0.session_question.completed_questions == 1
-        await store.bot_sessions.change_score(change=1, chat_id=session_start.chat_id)
+        active_session_1.session_question.completed_questions += 1
+        assert sess_0 == active_session_1
+        await store.bot_sessions.change_score(change=1, chat_id=active_session_1.chat_id)
         sess_1 = await store.bot_sessions.get_running_session(chat_id=chat_id)
-        assert sess_1.session_question.correct_questions == 1
-        assert sess_1.session_question.completed_questions == 2
-        await store.bot_sessions.stop_session(chat_id=session_start.chat_id)
+        active_session_1.session_question.completed_questions += 1
+        active_session_1.session_question.correct_questions += 1
+        assert sess_1 == active_session_1
+        await store.bot_sessions.stop_session(chat_id=active_session_1.chat_id)
         with pytest.raises(FileNotFoundError):
-            await store.bot_sessions.change_score(change=1, chat_id=session_start.chat_id)
+            await store.bot_sessions.change_score(change=1, chat_id=active_session_1.chat_id)
 
     async def test_stop_get_last_session(self, question_1: Question, question_2: Question,
                                          question_3: Question,
-                                         session_1: BotSession,
+                                         active_session_1: BotSession,
                                          user_chat_1: User,
                                          user_chat_2: User,
                                          store: Store):
-        start = datetime.datetime.now().timestamp()
-        session_start = await store.bot_sessions.start_session(user_chat_1.chat_id[0], start)
-        session_last = await store.bot_sessions.stop_session(chat_id=session_start.chat_id)
-        assert session_last.lead == session_start.session_question.lead.id
-        pass
+        session_last = await store.bot_sessions.stop_session(chat_id=active_session_1.chat_id)
+        assert session_last.lead == active_session_1.session_question.lead.id
 
     async def test_upsert_last_session(self, question_1: Question, question_2: Question,
                                        question_3: Question,
-                                       session_1: BotSession,
+                                       active_session_1: BotSession,
                                        user_chat_1: User,
                                        user_chat_2: User,
                                        store: Store):
-        start = datetime.datetime.now().timestamp()
-        session_start = await store.bot_sessions.start_session(user_chat_1.chat_id[0], start)
-        await store.bot_sessions.change_score(change=1, chat_id=session_start.chat_id)
-        await store.bot_sessions.change_score(change=0, chat_id=session_start.chat_id)
-        session_last = await store.bot_sessions.stop_session(chat_id=session_start.chat_id)
-        await store.bot_sessions.start_session(user_chat_1.chat_id[0], start)
-        await store.bot_sessions.change_score(change=1, chat_id=session_start.chat_id)
-        await store.bot_sessions.change_score(change=1, chat_id=session_start.chat_id)
-        session_last1 = await store.bot_sessions.stop_session(chat_id=session_start.chat_id)
-        assert session_last.correct_questions == 1
-        assert session_last.completed_questions == 2
-        assert session_last1.completed_questions == 2
-        assert session_last1.correct_questions == 2
+        await store.bot_sessions.change_score(change=1, chat_id=active_session_1.chat_id)
+        await store.bot_sessions.change_score(change=0, chat_id=active_session_1.chat_id)
+        session_last = await store.bot_sessions.stop_session(chat_id=active_session_1.chat_id)
+        await store.bot_sessions.start_session(active_session_1.chat_id, active_session_1.session_question.started_date)
+        gt_last_session = LastSession(
+            chat_id=active_session_1.chat_id,
+            lead=active_session_1.session_question.lead,
+            correct_questions=1,
+            completed_questions=2
+        )
+        assert session_last == gt_last_session
+        session_last2 = await store.bot_sessions.get_last_session(active_session_1.chat_id)
+        assert session_last2 == gt_last_session
 
     async def test_restart_session(self, question_1: Question, question_2: Question,
                                    question_3: Question,
@@ -204,7 +200,6 @@ class TestBotStore:
         sess = await store.bot_sessions.start_session(chat_id, start.timestamp())
         last_sess = await store.bot_sessions.get_last_session(chat_id)
         assert last_sess is None
-
         await store.bot_sessions.change_score(change=1, chat_id=chat_id)
         await store.bot_sessions.change_score(change=0, chat_id=chat_id)
         await store.bot_sessions.stop_session(chat_id=chat_id)
