@@ -47,9 +47,7 @@ class BotAccessor(BaseAccessor):
                 if not q_res:
                     q_res = TgUsersModel(id=user.id, uname=user.uname)
                     session.add(q_res)
-                for chat in user.chat_id:
-                    if chat not in q_res.chat:
-                        q_res.chat.append(TgUserChatModel(chat_id=chat))
+                q_res.chat.extend([TgUserChatModel(chat_id=chat) for chat in user.chat_id if chat not in q_res.chat])
         return User(id=q_res.id, uname=q_res.uname, chat_id=[i.chat_id for i in q_res.chat])
 
     async def create_session(self, chat_id: int) -> BotSession:
@@ -135,7 +133,6 @@ class BotAccessor(BaseAccessor):
                     session.add(q_res)
                 else:
                     q_res.respondent = respondent
-        pass
         return User(id=respondent, uname=resp.uname, chat_id=[c.chat_id for c in resp.chat])
 
     # async def get_last_session(self, chat_id: int) -> LastSession:
