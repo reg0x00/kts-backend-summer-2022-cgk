@@ -1,6 +1,7 @@
-version: "3.9"
+version: "0.1"
 services:
   postgres:
+    restart: unless-stopped
     container_name: db
     image: postgres:latest
     command:
@@ -34,29 +35,54 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - /home/user/pg_vol:/var/lib/postgresql/data
+      - ${HOME}/pg_vol:/var/lib/postgresql/data
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U kts_user -d kts" ]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
-    restart: unless-stopped
-  pgadmin:
-    container_name: pga
-    image: dpage/pgadmin4
-    restart: always
-    environment:
-      PGADMIN_DEFAULT_EMAIL: "admin@admin.com"
-      PGADMIN_DEFAULT_PASSWORD: "secret"
-      PGADMIN_LISTEN_PORT: 80
-    ports:
-      - "8880:80"
-    volumes:
-      - /home/user/pga:/var/lib/pgadmin
   rabbitmq:
     container_name: mq
     image: rabbitmq:3.10-management
     ports:
       - "15672:15672"
       - "5672:5672"
+  bot:
+    restart: unless-stopped
+    image: app_bot_2k2209:0.0.1
+    command:
+      - "app-bot"
+    environment:
+      - PG_HOST=db
+      - MQ_HOST=mq
+      - TG_TOKEN=none
+    ports:
+      - "80:80"
+    links:
+      - "postgres"
+    depends_on:
+      - "app_db"
+      - rabbitmq
+  tg_api:
+    restart: unless-stopped
+    image: app_bot_2k2209:0.0.1
+    command:
+      - "app-tg"
+    environment:
+      - MQ_HOST=mq
+      - TG_TOKEN=none
+    links:
+      - "rabbitmq"
+    depends_on:
+      - bot
+  app_db:
+    image: app_bot_2k2209:0.0.1
+    environment:
+      - APP_PG_URL=postgresql+asyncpg://kts_user:kts_pass@db/kts
+    command: bash -c "app-db upgrade head"
+    links:
+      - "postgres"
+    depends_on:
+      postgres:
+        condition: service_healthy

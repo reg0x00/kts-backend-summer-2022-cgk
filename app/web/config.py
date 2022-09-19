@@ -1,10 +1,15 @@
 import typing
 from dataclasses import dataclass
+import os
 
 import yaml
 
 if typing.TYPE_CHECKING:
     from app.web.app import Application
+
+TG_TOKEN_ENV = "TG_TOKEN"
+PG_HOST_ENV = "PG_HOST"
+MQ_HOST_ENV = "MQ_HOST"
 
 
 @dataclass
@@ -46,11 +51,17 @@ class DatabaseConfig:
 
 
 @dataclass
+class MqConfig:
+    host: str = "127.0.0.1"
+
+
+@dataclass
 class Config:
     admin: AdminConfig
     session: SessionConfig = None
     bot: BotConfig = None
     database: DatabaseConfig = None
+    mq: MqConfig = None
 
 
 def setup_config(app: "Application", config_path: str):
@@ -68,7 +79,7 @@ def setup_config(app: "Application", config_path: str):
             password=raw_config["admin"]["password"],
         ),
         bot=BotConfig(
-            token=raw_config["bot"]["token"],
+            token=raw_config["bot"]["tg_token"],
             discussion_timeout=raw_config["bot"]["discussion_timeout"],
             api=raw_config["bot"]["api_path"],
             # commands=Commands(**dict(map(lambda x: (x[0], "/" + x[1]), raw_config["bot"]["commands"].items())))
@@ -76,4 +87,11 @@ def setup_config(app: "Application", config_path: str):
 
         ),
         database=DatabaseConfig(**raw_config["database"]),
+        mq=MqConfig(raw_config["mq"]["host"])
     )
+    if TG_TOKEN_ENV in os.environ:
+        app.config.bot.token = os.getenv(TG_TOKEN_ENV)
+    if PG_HOST_ENV in os.environ:
+        app.config.database.host = os.getenv(PG_HOST_ENV)
+    if MQ_HOST_ENV in os.environ:
+        app.config.mq.host = os.getenv(MQ_HOST_ENV)

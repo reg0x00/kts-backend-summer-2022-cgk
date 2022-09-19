@@ -4,7 +4,7 @@ admin:
   email: admin@admin.com
   password: admin
 bot:
-  token: group_token
+  tg_token: group_token
   discussion_timeout: 60
   api_path: https://api.telegram.org/bot
   commands:
@@ -20,3 +20,5 @@ database:
   user: kts_user
   password: kts_pass
   database: kts
+mq:
+  host: 127.0.0.1
