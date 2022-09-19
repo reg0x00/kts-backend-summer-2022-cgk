@@ -5,6 +5,8 @@ import yaml
 
 if typing.TYPE_CHECKING:
     from app.web.app import Application
+
+
 @dataclass
 class SessionConfig:
     key: str
@@ -17,9 +19,21 @@ class AdminConfig:
 
 
 @dataclass
+class Commands:
+    start: str
+    stop: str
+    info: str
+    add_selection: str
+    assign: str
+    answer: str
+
+
+@dataclass
 class BotConfig:
     token: str
     discussion_timeout: int
+    api: str
+    commands: Commands
 
 
 @dataclass
@@ -42,7 +56,9 @@ class Config:
 def setup_config(app: "Application", config_path: str):
     with open(config_path, "r") as f:
         raw_config = yaml.safe_load(f)
-
+    commands = dict()
+    for c in raw_config["bot"]["commands"]:
+        commands[c] = "/" + raw_config["bot"]["commands"][c]
     app.config = Config(
         session=SessionConfig(
             key=raw_config["session"]["key"],
@@ -53,7 +69,11 @@ def setup_config(app: "Application", config_path: str):
         ),
         bot=BotConfig(
             token=raw_config["bot"]["token"],
-            discussion_timeout=raw_config["bot"]["discussion_timeout"]
+            discussion_timeout=raw_config["bot"]["discussion_timeout"],
+            api=raw_config["bot"]["api_path"],
+            # commands=Commands(**dict(map(lambda x: (x[0], "/" + x[1]), raw_config["bot"]["commands"].items())))
+            commands=Commands(**commands)
+
         ),
         database=DatabaseConfig(**raw_config["database"]),
     )

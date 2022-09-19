@@ -28,7 +28,7 @@ class QuizAccessor(BaseAccessor):
     ) -> Question:
         now_question = QuestionModel(title=title,
                                      answers=[
-                                         AnswerModel(title=ans.title)
+                                         AnswerModel(**ans.__dict__)
                                          for ans in answers
                                      ])
         async with self.app.database.session() as session:

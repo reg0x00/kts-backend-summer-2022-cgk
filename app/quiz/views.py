@@ -26,7 +26,7 @@ class QuestionAddView(AuthRequiredMixin, View):
         try:
             question = await self.store.quizzes.create_question(
                 title=title_,
-                answers=[Answer(title=anwser["title"]) for anwser in answers_]
+                answers=[Answer(**anwser) for anwser in answers_]
             )
         except IntegrityError as e:
             match e.orig.pgcode:
@@ -42,10 +42,7 @@ class QuestionListView(AuthRequiredMixin, View):
     @response_schema(ListQuestionSchema)
     async def get(self):
         raw_res = await self.store.quizzes.list_questions()
-        res = []
-        if raw_res:
-            for i in raw_res:
-                res.append(QuestionSchema().dump(i))
+        res = QuestionSchema().dump(raw_res, many=True)
         return json_response(data={
             "questions": res
         })
