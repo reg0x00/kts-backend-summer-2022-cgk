@@ -18,20 +18,11 @@ if typing.TYPE_CHECKING:
 class BotAccessor(BaseAccessor):
     async def connect(self, app: "Application"):
         async with self.app.database.session() as session:
-            q = select(SessionModel)
-            sessions = (await session.execute(q)).scalars().all()
-            for s in sessions:
-                self.app.store.bots_manager.sessions[s.chat_id] = BotSession(chat_id=s.chat_id)
             q = select(SessionCurrentQuestionModel)
             sessions_active = (await session.execute(q)).scalars().all()
             for s in sessions_active:
                 running_session = await self.get_running_session(s.session_id)
                 await self.app.store.bots_manager.start_session_runner(running_session, msg=False)
-            q = select(LastSessionModel)
-            sessions_last = (await session.execute(q)).scalars().all()
-            for s in sessions_last:
-                last_session = await self.get_last_session(s.session_id)
-                await self.app.store.bots_manager.add_last_session(last_session)
 
     async def disconnect(self, app: "Application"):
         pass
@@ -155,7 +146,7 @@ class BotAccessor(BaseAccessor):
         )
 
     async def change_score(self, change: int, chat_id: int):
-        if not (0 <= change <= 1):
+        if not (0 == change or change == 1):
             raise ValueError
         async with self.app.database.session() as session:
             async with session.begin():
@@ -218,7 +209,7 @@ class BotAccessor(BaseAccessor):
                 await session.merge(to_last_session)
         return LastSession(
             chat_id=chat_id,
-            lead=to_last_session.lead,
+            lead=(await self.get_user(to_last_session.lead)),
             correct_questions=to_last_session.correct_questions,
             completed_questions=to_last_session.completed_questions
         )
@@ -231,3 +222,12 @@ class BotAccessor(BaseAccessor):
             if not user:
                 return None
         return User(id=user.id, uname=uname, chat_id=[c.chat_id for c in user.chat])
+
+    async def get_user(self, id_: int) -> User | None:
+        async with self.app.database.session() as session:
+            q = select(TgUsersModel).where(TgUsersModel.id == id_).options(
+                joinedload(TgUsersModel.chat))
+            user = (await (session.execute(q))).scalars().first()
+            if not user:
+                return None
+        return User(id=user.id, uname=user.uname, chat_id=[c.chat_id for c in user.chat])

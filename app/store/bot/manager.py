@@ -20,7 +20,6 @@ class BotManager:
         self.bot = None
         self.logger = getLogger("handler")
         self.sessions_timers: dict[int] = dict()
-        self.sessions: dict[int] = dict()
 
     async def session_not_found(self, chat_id: int):
         await self.app.store.tg_api.send_message(
@@ -36,7 +35,8 @@ class BotManager:
                 user_id=bot_session.chat_id,
                 text=f"Раунд {bot_session.session_question.completed_questions}," +
                      f" вопрос: {bot_session.session_question.question.title}, " +
-                     f"капитан: {bot_session.session_question.lead.uname}",
+                     f"капитан: {bot_session.session_question.lead.uname}, " +
+                     f"Счет {bot_session.session_question.completed_questions}:{bot_session.session_question.correct_questions}, "
             )
         )
 
@@ -45,7 +45,7 @@ class BotManager:
             Message(
                 user_id=last_session.chat_id,
                 text=f"Результаты предыдущей сессии:"
-                     f"Счет {last_session.completed_questions}:{last_session.completed_questions},"
+                     f"Счет {last_session.completed_questions}:{last_session.correct_questions}, "
                      f"капитан: {last_session.lead.uname}",
             )
         )
@@ -55,14 +55,15 @@ class BotManager:
 
     async def info_command(self, update: Update):
         chat_id = update.object.chat_id
-        if chat_id not in self.sessions:
+        session = await self.app.store.bot_sessions.get_running_session(chat_id=chat_id)
+        if not session:
             await self.session_not_found(chat_id)
         else:
-            session = self.sessions[chat_id]
             if session.session_question:
                 await self.general_session_info(session)
-            if session.last_session:
-                await self.last_session_info(session.last_session)
+            last_session = await self.app.store.bot_sessions.get_last_session(chat_id)
+            if last_session:
+                await self.last_session_info(last_session)
 
     async def assign_command(self, update: Update):
         chat_id = update.object.chat_id
@@ -74,14 +75,14 @@ class BotManager:
                 )
             )
         else:
-            if chat_id not in self.sessions or self.sessions[chat_id].session_question is None:
+            session = await self.app.store.bot_sessions.get_running_session(chat_id=chat_id)
+            if not session or session.session_question is None:
                 await self.session_not_found(chat_id)
                 return
-            sess = self.sessions[chat_id]
-            if update.object.from_id != sess.session_question.lead.id:
+            if update.object.from_id != session.session_question.lead.id:
                 await self.app.store.tg_api.send_message(Message(
                     user_id=chat_id,
-                    text=f"Назначать отвечающего может только капитан {sess.session_question.lead.uname}",
+                    text=f"Назначать отвечающего может только капитан {session.session_question.lead.uname}",
                 ))
             else:
                 in_uname = update.object.text.split()[-1][1:]
@@ -93,8 +94,7 @@ class BotManager:
                             text=f"Пользователь {in_uname} не участвует в игре",
                         ))
                     return
-                await self.set_respondent(selected_user.id, session_id=sess.chat_id)
-                self.sessions[chat_id] = await self.app.store.bot_sessions.get_running_session(chat_id=chat_id)
+                await self.set_respondent(selected_user.id, session_id=chat_id)
                 self.sessions_timers[chat_id][1].set()
                 await self.app.store.tg_api.send_message(
                     Message(
@@ -117,11 +117,11 @@ class BotManager:
         )
 
     async def stop_command(self, update: Update):
-        if self.sessions[update.object.chat_id].session_question is None:
+        session = await self.app.store.bot_sessions.get_running_session(update.object.chat_id)
+        if not session or session.session_question is None:
             await self.session_not_found(chat_id=update.object.chat_id)
         else:
             last_session = await self.app.store.bot_sessions.stop_session(chat_id=update.object.chat_id)
-            await self.add_last_session(last_session)
             await self.app.store.tg_api.send_message(
                 Message(
                     user_id=update.object.chat_id,
@@ -130,7 +130,7 @@ class BotManager:
             )
 
     async def answer_command(self, update: Update):
-        session = self.sessions[update.object.chat_id]
+        session = await self.app.store.bot_sessions.get_running_session(update.object.chat_id)
         if session and session.session_question and session.session_question.respondent and update.object.from_id == session.session_question.respondent.id:
             if session.check_answer(ans="".join(update.object.text.split()[1:])):
                 await self.app.store.bot_sessions.change_score(chat_id=update.object.chat_id, change=0)
@@ -162,9 +162,8 @@ class BotManager:
                 )
             )
         else:
-            if update.object.chat_id not in self.sessions:
+            if not await self.app.store.bot_sessions.get_running_session(update.object.chat_id):
                 await self.app.store.bot_sessions.create_session(update.object.chat_id)
-                self.sessions[update.object.chat_id] = BotSession(chat_id=update.object.chat_id)
             match update.object.text.split()[0]:
                 case self.app.config.bot.commands.start:
                     await self.start_command(update)
@@ -183,28 +182,28 @@ class BotManager:
         try:
             bt_session = await self.app.store.bot_sessions.start_session(chat_id, started_date=started_date)
         except IntegrityError as e:
+            session = await self.app.store.bot_sessions.get_running_session(chat_id=chat_id)
             match e.orig.pgcode:
                 case "23505":
                     await self.app.store.tg_api.send_message(
                         Message(
                             user_id=chat_id,
                             text=f"Сессия уже начата, вопрос: " +
-                                 f"{self.sessions[chat_id].session_question.question.title}," +
-                                 f" капитан: {self.sessions[chat_id].session_question.lead.uname}",
+                                 f"{session.session_question.question.title}," +
+                                 f" капитан: {session.session_question.lead.uname}",
                         )
                     )
-                    if self.sessions[chat_id].session_question.respondent:
+                    if session.session_question.respondent:
                         await self.app.store.tg_api.send_message(
                             Message(
                                 user_id=chat_id,
-                                text=f"Отвечает пользователь: {self.sessions[chat_id].session_question.respondent.uname}",
+                                text=f"Отвечает пользователь: {session.session_question.respondent.uname}",
                             )
                         )
-                    elif time.time() > self.sessions[
-                        chat_id].session_question.started_date + self.app.config.bot.discussion_timeout:
+                    elif time.time() > session.session_question.started_date + self.app.config.bot.discussion_timeout:
                         await self.app.store.tg_api.send_message(
                             Message(
-                                user_id=self.sessions[chat_id].chat_id,
+                                user_id=session.chat_id,
                                 text="Выберите отвечающего",
                             )
                         )
@@ -223,15 +222,11 @@ class BotManager:
             raise e
         await self.start_session_runner(bt_session)
 
-    async def add_last_session(self, last_session: LastSession):
-        self.sessions[last_session.chat_id].last_session = last_session
-
     async def start_session_runner(self, bot_session: BotSession, msg: bool = True):
         if msg:
             await self.general_session_info(bot_session)
         event = asyncio.Event()
         task = asyncio.create_task(self.session_runner(bot_session, event))
-        self.sessions[bot_session.chat_id] = bot_session
         self.sessions_timers[bot_session.chat_id] = (task, event)
 
     async def set_respondent(self, respondent: int, session_id: int):
