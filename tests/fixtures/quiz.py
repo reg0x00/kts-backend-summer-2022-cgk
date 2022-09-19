@@ -1,7 +1,9 @@
+import datetime
+
 import pytest
 
-from app.bot.models import TgUsersModel, SessionModel, TgUserChatModel
-from app.bot.models_dc import User, BotSession
+from app.bot.models import TgUsersModel, SessionModel, TgUserChatModel, SessionCurrentQuestionModel
+from app.bot.models_dc import User, BotSession, SessionQuestion
 from app.quiz.models import (
     Answer,
     AnswerModel,
@@ -111,6 +113,29 @@ async def session_1(db_session) -> BotSession:
 
     return BotSession(
         chat_id=user_chat.chat_id
+    )
+
+
+@pytest.fixture
+async def active_session_1(session_1: BotSession, db_session, user_chat_1: User, question_1: Question) -> BotSession:
+    async with db_session.begin() as session:
+        sess = SessionCurrentQuestionModel(
+            session_id=session_1.chat_id,
+            question_id=question_1.id,
+            started_date=int(datetime.datetime.now().timestamp()),
+            lead=user_chat_1.id,
+        )
+        session.add(sess)
+
+    return BotSession(
+        chat_id=session_1.chat_id,
+        session_question=SessionQuestion(
+            question=question_1,
+            started_date=sess.started_date,
+            completed_questions=sess.completed_questions,
+            correct_questions=sess.correct_questions,
+            lead=user_chat_1
+        )
     )
 
 

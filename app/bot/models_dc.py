@@ -35,4 +35,4 @@ class BotSession:
     last_session: LastSession | None = None
 
     def check_answer(self, ans: str):
-        return self.session_question and any([ans in a.title for a in self.session_question.question.answers])
+        return self.session_question and ans in [a.title for a in self.session_question.question.answers]
